@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <style>
+    body {
+      text-align: center;
+      font-family: "Trebuchet MS", Arial;
+      margin-left:auto;
+      margin-right:auto;
+    }
+    .slider {
+      width: 300px;
+    }
+  </style>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+</head>
+<body>
+  <h1>ESP32 with Servo</h1>
+  <p>Position servo1: <span id="servoPos"></span></p>
+  <input type="range" min="0" max="270" class="slider" id="servoSlider" onchange="servo(this.value,servo1)"/>
+  <p>Position servo2: <span id="servoPos2"></span></p>
+  <input type="range" min="0" max="270" class="slider" id="servoSlider2" onchange="servo(this.value,servo2)"/>
+  <p>Enregistrer la position : <span id="save"></span></p><a href="/save"><button>Save</button></a>
+  <p>Charger la position : <span id="load"></span></p><a href="/load"><button>LOAD</button></a>
+  <script>
+    var slider = document.getElementById("servoSlider");
+    var servoP = document.getElementById("servoPos");
+	var slider2 = document.getElementById("servoSlider2");
+    var servoP2 = document.getElementById("servoPos2");
+    servoP.innerHTML = slider.value;
+	servoP2.innerHTML = slider2.value;
+    slider.oninput = function() {
+      slider.value = this.value;
+      servoP.innerHTML = this.value;
+    }
+	slider2.oninput = function() { slider2.value = this.value; servoP2.innerHTML = this.value; }
+    $.ajaxSetup({timeout:1000});
+    function servo(pos,servo) {
+      $.get("/?value=" + pos + "&" + "servo=" + servo + "&");
+      {Connection: close};
+    }
+  </script>
+</body>
+</html>
