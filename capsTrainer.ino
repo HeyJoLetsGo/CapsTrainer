@@ -1,125 +1,182 @@
-/*********
-  Jonathan Rivault
-*********/
-
+#include <Arduino.h>
+#include <ESP32Servo.h>
 #include <WiFi.h>
-#include <Servo.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncTCP.h>
 #include <Preferences.h>
-#include <WiFiManager.h>
+#include "SPIFFS.h"
 
-Servo servoBase;  // create servo object to control a servo
+// Create AsyncWebServer object on port 80
+AsyncWebServer server(80);
+
+// create servo object to control a servo
+Servo servoBase;  
 Servo servoArm1;
 Servo servoArm2;
-Servo servoEnd;
-// twelve servo objects can be created on most boards
+Servo servoHead;
 
+//ppreferences added to "save" positions between launch
 Preferences preferences;
 
-// Set web server port number to 80
-WiFiServer server(80);
+// Search for parameter in HTTP POST request
+const char* PARAM_WIFI_INPUT_1 = "ssid";
+const char* PARAM_WIFI_INPUT_2 = "pass";
+const char* PARAM_WIFI_INPUT_3 = "ip";
+const char* PARAM_WIFI_INPUT_4 = "gateway";
 
-// Variable to store the HTTP request
-String header;
 
-int posServoBase = 0;
-int posServoArm1 = 0;
-int posServoArm2 = 0;
-int posServoEnd = 0;
-String posBaseServo = String(0);
-String posArm1Servo = String(0);
-String posArm2Servo = String(0);
-String posEndServo = String(0);
+//Variables to save values from HTML form
+String ssid;
+String pass;
+String ip;
+String gateway;
+
+// File paths to save input values permanently
+const char* ssidPath = "/ssid.txt";
+const char* passPath = "/pass.txt";
+const char* ipPath = "/ip.txt";
+const char* gatewayPath = "/gateway.txt";
+
+IPAddress localIP;
+//IPAddress localIP(192, 168, 1, 200); // hardcoded
+
+// Set your Gateway IP address
+IPAddress localGateway;
+//IPAddress localGateway(192, 168, 1, 1); //hardcoded
+IPAddress subnet(255, 255, 0, 0);
+
+// Parameters for servo movement
+const char* PARAM_INPUT_1 = "value";
+const char* PARAM_INPUT_2 = "servo";
+
+// Timer variables
+unsigned long previousMillis = 0;
+const long interval = 10000;  // interval to wait for Wi-Fi connection (milliseconds)
+
+int posServo = 0;
+int posServoBase = 90;
+int posServoArm1 = 90;
+int posServoArm2 = 90;
+int posServoHead = 90;
 
 int elecAimDev = 25;
 int elecAimAD = 26;
 int elecAimAG = 27;
 
-// Current time
-unsigned long currentTime = millis();
-// Previous time
-unsigned long previousTime = 0; 
-// Define timeout time in milliseconds (example: 2000ms = 2s)
-const long timeoutTime = 2000;
+String inputValue;
+String inputServo;
 
-void setup() {
-  Serial.begin(115200);
+bool MOVE_SERVO = false;
+bool SAVE_SLEEP_POSITIONS = false;
+bool SAVE_LOAD_POSITIONS = false;
+bool LOAD_SLEEP_POSITIONS = false;
+bool LOAD_LOAD_POSITIONS = false;
+bool RELOAD_CAPS = false;
 
-  wifiConnection();
-  initServo();
-  initAimant();
+bool SERVO_BASE = false;
+bool SERVO_ARM1 = false;
+bool SERVO_ARM2 = false;
+bool SERVO_HEAD = false;
 
-  preferences.begin("positions", false);
-
-  //start server  
-  server.begin();
+// Initialize SPIFFS
+void initSPIFFS() {
+  if (!SPIFFS.begin(true)) {
+    Serial.println("An error has occurred while mounting SPIFFS");
+  }
+  Serial.println("SPIFFS mounted successfully");
 }
 
-void loop(){
-  WiFiClient client = server.available();   // Listen for incoming clients
+// Read File from SPIFFS
+String readFile(fs::FS &fs, const char * path){
+  Serial.printf("Reading file: %s\r\n", path);
+
+  File file = fs.open(path);
+  if(!file || file.isDirectory()){
+    Serial.println("- failed to open file for reading");
+    return String();
+  }
   
-  if (client) {                             // If a new client connects,
-    currentTime = millis();
-    previousTime = currentTime;
-    Serial.println("New Client.");     // print a message out in the serial port
-    String currentLine = "";    
-                // make a String to hold incoming data from the client
-    while (client.connected() && currentTime - previousTime <= timeoutTime) { // loop while the client's connected
-      currentTime = millis();
-      if (client.available()) {            // if there's bytes to read from the client,
-        char c = client.read();             // read a byte, then
-        Serial.write(c);                // print it out the serial monitor
-        header += c;
-        if (c == '\n') {                    // if the byte is a newline character
-          // if the current line is blank, you got two newline characters in a row.
-          // that's the end of the client HTTP request, so send a response:
-          
-          if (currentLine.length() == 0) {
-            manageServerResponse(header);
+  String fileContent;
+  while(file.available()){
+    fileContent = file.readStringUntil('\n');
+    break;     
+  }
+  return fileContent;
+}
 
-            loadHtmlPage(client);
+// Write file to SPIFFS
+void writeFile(fs::FS &fs, const char * path, const char * message){
+  Serial.printf("Writing file: %s\r\n", path);
 
-            client.println();
-            break;
-          } else { // if you got a newline, then clear currentLine
-            currentLine = "";
-          }
-        } else if (c != '\r') {  // if you got anything else but a carriage return character,
-          currentLine += c;      // add it to the end of the currentLine
-        }
-      }      
-      
-    }
-    //Serial.println(preferences.getUInt("servoBase", posServoBase));
-    //Serial.println(preferences.getUInt("servoArm1", posServoArm1));
-    // Clear the header variable
-    header = "";
-    // Close the connection
-    client.stop();
-    Serial.println("Client disconnected.");
-    Serial.println("");
+  File file = fs.open(path, FILE_WRITE);
+  if(!file){
+    Serial.println("- failed to open file for writing");
+    return;
+  }
+  if(file.print(message)){
+    Serial.println("- file written");
+  } else {
+    Serial.println("- write failed");
   }
 }
 
-void wifiConnection() {
-  //Local initialization of WiFiManager
-  WiFiManager wm;
-
-  bool res;
-  res = wm.autoConnect("AutoConnectAP","CapsTrainer");
-
-  if (!res) {
-    Serial.println("Failed to connect to WiFi");
+// Initialize WiFi
+bool initWiFi() {
+  if(ssid=="" || ip==""){
+    Serial.println("Undefined SSID or IP address.");
+    return false;
   }
-  else {
-    Serial.println("Connected to WiFi !");
+
+  WiFi.mode(WIFI_STA);
+  localIP.fromString(ip.c_str());
+  localGateway.fromString(gateway.c_str());
+
+
+  if (!WiFi.config(localIP, localGateway, subnet)){
+    Serial.println("STA Failed to configure");
+    return false;
   }
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  Serial.println("Connecting to WiFi...");
+
+  unsigned long currentMillis = millis();
+  previousMillis = currentMillis;
+
+  while(WiFi.status() != WL_CONNECTED) {
+    currentMillis = millis();
+    if (currentMillis - previousMillis >= interval) {
+      Serial.println("Failed to connect.");
+      return false;
+    }
+  }
+
+  Serial.println(WiFi.localIP());
+  return true;
+}
+
+// Replaces placeholder with LED state value
+String processor(const String& var) {
+  if(var == "POSITION_SERVO_BASE") {
+    return String(posServoBase);
+  }
+  if(var == "POSITION_SERVO_ARM1") {
+    return String(posServoArm1);
+  }
+  if(var == "POSITION_SERVO_ARM2") {
+    return String(posServoArm2);
+  }
+  if(var == "POSITION_SERVO_HEAD") {
+    return String(posServoHead);
+  }
+  return String();
 }
 
 void initServo() {
   servoBase.attach(18);  // attaches the servo on the servoPin to the servo object
   servoArm1.attach(19);
+  servoBase.write(90);
   servoArm2.attach(21);
-  servoEnd.attach(5);
+  servoHead.attach(5);
 }
 
 void initAimant() {
@@ -131,111 +188,47 @@ void initAimant() {
   digitalWrite(elecAimAG, HIGH);
 }
 
-void manageServerResponse(String header) {
-
-  if(header.indexOf("GET /?value=")>=0 && header.indexOf("&servo=")>=0) {
-    int posEqualURL = header.indexOf('=');
-    int posAndURL = header.indexOf('&');
-    String posServo = header.substring(posEqualURL+1, posAndURL);
-    int posServoURL = header.indexOf("servo=");
-    posEqualURL = header.indexOf('=', posServoURL);
-    posAndURL = header.indexOf('&', posServoURL);
-    String whichServo = header.substring(posEqualURL+1, posAndURL);
-    //Rotate the servo
-    Serial.println("Servo : " + whichServo);
-
-    moveServo(whichServo, posServo);
- 
-    //Serial.println("posServoBase : " + posServoBase); 
-    
-  }
-  if(header.indexOf("GET /save/load") >= 0) {
-    saveServoLoadPositions();
-  }  
-  if(header.indexOf("GET /load/load") >= 0) {
-    loadServoLoadPositions();
-  }
-  if(header.indexOf("GET /save/sleep") >= 0) {
-    saveServoSleepPositions();
-  }  
-  if(header.indexOf("GET /load/sleep") >= 0) {
-    loadServoSleepPositions();
-  }
-  if(header.indexOf("Get /reload") >= 0) {
-    reloadCaps();
-  }      
-  // The HTTP response ends with another blank line
-  
-  // Break out of the while loop
-  
-}
-
-void moveServo(String servo, String positionServo) {
-
-  if (servo == "servoBase") {
-      posBaseServo = positionServo;
-      posServoBase = positionServo.toInt();
-      servoBase.write(posServoBase);
-  }
-  else if (servo == "servoArm1") { 
-      posArm1Servo = positionServo;
-      posServoArm1 = positionServo.toInt();
-      servoArm1.write(posServoArm1);
-  }
-  else if (servo == "servoArm2") {
-      posArm2Servo = positionServo;
-      posServoArm2 = positionServo.toInt();
-      servoArm2.write(posServoArm2);      
-  }
-  else if (servo == "servoEnd") {
-      posEndServo = positionServo;
-      posServoEnd = positionServo.toInt();
-      servoEnd.write(posServoEnd); 
-  }
-}
-
 void saveServoLoadPositions() {   
   preferences.putUInt("servoBaseLoad", posServoBase);
   preferences.putUInt("servoArm1Load", posServoArm1);
   preferences.putUInt("servoArm2Load", posServoArm2);
-  preferences.putUInt("servoEndLoad", posServoEnd);
+  preferences.putUInt("servoHeadLoad", posServoHead);
 }
 
 void loadServoLoadPositions() {
+ 
   posServoBase = preferences.getUInt("servoBaseLoad", 0);
-  posBaseServo = String(posServoBase);
-  servoBase.write(posServoBase); 
-  posServoArm1 = preferences.getUInt("servoArm1Load", 0);   
-  posArm1Servo = String(posServoArm1);     
-  servoArm1.write(posServoArm1);
-  posServoArm2 = preferences.getUInt("servoArm2Load", 0);   
-  posArm2Servo = String(posServoArm2);     
-  servoArm2.write(posServoArm2);
-  posServoEnd = preferences.getUInt("servoEndLoad", 0);   
-  posEndServo = String(posServoEnd);     
-  servoEnd.write(posServoEnd);
+  moveServo(servoBase, posServoBase, preferences.getUInt("servoBaseLoad", 0));
+ 
+  posServoArm1 = preferences.getUInt("servoArm1Load", 0);
+  moveServo(servoArm1, posServoArm1, preferences.getUInt("servoArm1Load", 0)); 
+ 
+  posServoArm2 = preferences.getUInt("servoArm2Load", 0);
+  moveServo(servoArm2, posServoArm2, preferences.getUInt("servoArm2Load", 0));
+ 
+  posServoHead = preferences.getUInt("servoHeadLoad", 0);
+  moveServo(servoHead, posServoHead, preferences.getUInt("servoHeadLoad", 0));
 }
 
 void saveServoSleepPositions() {   
   preferences.putUInt("servoBaseSleep", posServoBase);
   preferences.putUInt("servoArm1Sleep", posServoArm1);
   preferences.putUInt("servoArm2Sleep", posServoArm2);
-  preferences.putUInt("servoEndSleep", posServoEnd);
+  preferences.putUInt("servoHeadSleep", posServoHead);
 }
 
 void loadServoSleepPositions() {
-  posServoBase = preferences.getUInt("servoBaseSleep", 0);
-  posBaseServo = String(posServoBase);
-  servoBase.write(posServoBase); 
-  posServoArm1 = preferences.getUInt("servoArm1Sleep", 0);   
-  posArm1Servo = String(posServoArm1);     
-  servoArm1.write(posServoArm1);
-  posServoArm2 = preferences.getUInt("servoArm2Sleep", 0);   
-  posArm2Servo = String(posServoArm2);     
-  servoArm2.write(posServoArm2);
-  posServoEnd = preferences.getUInt("servoEndSleep", 0);   
-  posEndServo = String(posServoEnd);     
-  servoEnd.write(posServoEnd);
+  // moveServo(servoBase, posServoBase, preferences.getUInt("servoBaseSleep", 0));
+  posServoBase = preferences.getUInt("servoBaseLoad", 0);
+
+  // moveServo(servoArm1, posServoArm1, preferences.getUInt("servoArm1Sleep", 0));
+  posServoArm1 = preferences.getUInt("servoArm1Sleep", 0); 
+     
+  // moveServo(servoArm2, posServoArm2, preferences.getUInt("servoArm2Sleep", 0));
+  posServoArm2 = preferences.getUInt("servoArm2Load", 0);
+     
+  // moveServo(servoHead, posServoHead, preferences.getUInt("servoHeadSleep", 0));
+  posServoHead = preferences.getUInt("servoHeadLoad", 0);
 }
 
 void reloadCaps() {
@@ -252,17 +245,17 @@ void goToBottlePosition() {
   servoBase.write(preferences.getUInt("servoBaseLoad", 0));
   servoArm1.write(preferences.getUInt("servoArm1Load", 0));  
   servoArm2.write(preferences.getUInt("servoArm2Load", 0));
-  servoEnd.write(preferences.getUInt("servoEndLoad", 0));
+  servoHead.write(preferences.getUInt("servoHeadLoad", 0));
 }
 
 void elecAimOff() {
   digitalWrite(elecAimDev, LOW);
-  digitalWrite(elecAimDev, LOW);
-  digitalWrite(elecAimDev, LOW);
+  digitalWrite(elecAimAD, LOW);
+  digitalWrite(elecAimAG, LOW);
 }
 
 void goToSleepPosition() {
-  servoEnd.write(preferences.getUInt("servoEndSleep", 0));
+  servoHead.write(preferences.getUInt("servoHeadSleep", 0));
   servoArm2.write(preferences.getUInt("servoArm2Sleep", 0));
   servoArm1.write(preferences.getUInt("servoArm1Sleep", 0));
   servoBase.write(preferences.getUInt("servoBaseSleep", 0));
@@ -270,71 +263,260 @@ void goToSleepPosition() {
 
 void elecAimOn() {
   digitalWrite(elecAimDev, HIGH);
-  digitalWrite(elecAimDev, HIGH);
-  digitalWrite(elecAimDev, HIGH);
+  digitalWrite(elecAimAD, HIGH);
+  digitalWrite(elecAimAG, HIGH);
 }
 
-void loadHtmlPage(WiFiClient client) {
-  // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-  // and a content-type so the client knows what's coming, then a blank line:
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-type:text/html");
-  client.println("Connection: close");
-  client.println();
+void engageServo(String servo) {
 
-  // Display the HTML web page
-  client.println("<!DOCTYPE html><html>");
-  client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" charset=\"UTF-8\">");
-  client.println("<link rel=\"icon\" href=\"data:,\">");
-  // CSS to style the on/off buttons 
-  // Feel free to change the background-color and font-size attributes to fit your preferences
-  client.println("<style>body { text-align: center; font-family: \"Trebuchet MS\", Arial; margin-left:auto; margin-right:auto;}");
-  client.println(".tab {overflow: hidden;border: 1px solid #ccc;background-color: #f1f1f1;}");
-  client.println(".tab button {background-color: inherit;float: left;width: 50%;border: none;outline: none;cursor: pointer;padding: 14px 16px;transition: 0.3s;}");
-  client.println(".tab button:hover {background-color: #ddd;}");
-  client.println(".tab button.active {background-color: #ccc;}");
-  client.println(".tabcontent {display: none; padding: 6px 12px;}");
-  client.println(".slider { width: 300px; }</style>");
-  client.println("<script src=\"https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js\"></script>");
-            
-  // Web Page
-  client.println("</head><body><h1>CAPS TRAINER</h1>");
-  client.println("<div class=\"tab\"><button class=\"tablinks\" onclick=\"openTab(event, 'Setup')\" id=\"defaultOpen\">Setup</button><button class=\"tablinks\" onclick=\"openTab(event, 'Use')\">Use</button></div>");
-  client.println("<div id=\"Setup\" class=\"tabcontent\">");
-  client.println("<p>Position base : <span id=\"basePos\"></span></p>");          
-  client.println("<input type=\"range\" min=\"0\" max=\"180\" class=\"slider\" id=\"baseSlider\" onchange=\"servo(this.value,'servoBase')\" value=\""+posBaseServo+"\"/>");
-  client.println("<p>Position bras 1 : <span id=\"arm1Pos\"></span></p>");          
-  client.println("<input type=\"range\" min=\"0\" max=\"180\" class=\"slider\" id=\"arm1Slider\" onchange=\"servo(this.value,'servoArm1')\" value=\""+posArm1Servo+"\"/>");
-  client.println("<p>Position bras 2 : <span id=\"arm2Pos\"></span></p>");          
-  client.println("<input type=\"range\" min=\"0\" max=\"180\" class=\"slider\" id=\"arm2Slider\" onchange=\"servo(this.value,'servoArm2')\" value=\""+posArm2Servo+"\"/>");
-  client.println("<p>Position tête : <span id=\"endPos\"></span></p>");          
-  client.println("<input type=\"range\" min=\"0\" max=\"180\" class=\"slider\" id=\"endSlider\" onchange=\"servo(this.value,'servoEnd')\" value=\""+posEndServo+"\"/>");
-  client.println("<p>Enregistrer la position de recharge: <span id=\"save\"></span></p><a href=\"/save/load\"><button>Save</button></a>"); 
-  client.println("<p>Charger la position de recharge: <span id=\"load\"></span></p><a href=\"/load/load\"><button>Load</button></a>"); 
-  client.println("<p>Enregistrer la position de repos: <span id=\"save\"></span></p><a href=\"/save/sleep\"><button>Save</button></a>"); 
-  client.println("<p>Charger la position de repos: <span id=\"load\"></span></p><a href=\"/load/sleep\"><button>Load</button></a>"); 
-  client.println("</div>");
-  client.println("<div id=\"Use\" class=\"tabcontent\">");
-  client.println("<p>Recharger les CAPS : <span id=\"recharge\"></span></p><a href=\"/reload\"><button>Recharger</button></a>");
-  client.println("</div>");
-  client.println("<script>");
-  client.println("var sliderBase = document.getElementById(\"baseSlider\"); var servoBasePos = document.getElementById(\"basePos\"); servoBasePos.innerHTML = sliderBase.value;" );
-  client.println("sliderBase.oninput = function() { sliderBase.value = this.value; servoBasePos.innerHTML = this.value; }");
-  client.println("var sliderArm1 = document.getElementById(\"arm1Slider\"); var servoArm1Pos = document.getElementById(\"arm1Pos\"); servoArm1Pos.innerHTML = sliderArm1.value;");
-  client.println("sliderArm1.oninput = function() { sliderArm1.value = this.value; servoArm1Pos.innerHTML = this.value; }");
-  client.println("var sliderArm2 = document.getElementById(\"arm2Slider\"); var servoArm2Pos = document.getElementById(\"arm2Pos\"); servoArm2Pos.innerHTML = sliderArm2.value;");
-  client.println("sliderArm2.oninput = function() { sliderArm2.value = this.value; servoArm2Pos.innerHTML = this.value; }");
-  client.println("var sliderEnd = document.getElementById(\"endSlider\"); var servoEndPos = document.getElementById(\"endPos\"); servoEndPos.innerHTML = sliderEnd.value;");
-  client.println("sliderEnd.oninput = function() { sliderEnd.value = this.value; servoEndPos.innerHTML = this.value; }");
-  client.println("function openTab(evt, cityName) {");
-  client.println("var i, tabcontent, tablinks;tabcontent = document.getElementsByClassName(\"tabcontent\");");
-  client.println("for (i = 0; i < tabcontent.length; i++) {tabcontent[i].style.display = \"none\";}");
-  client.println("tablinks = document.getElementsByClassName(\"tablinks\");");
-  client.println("for (i = 0; i < tablinks.length; i++) {tablinks[i].className = tablinks[i].className.replace(\" active\", \"\");}");
-  client.println("document.getElementById(cityName).style.display = \"block\";evt.currentTarget.className += \" active\";}");
-  client.println("document.getElementById(\"defaultOpen\").click();");
-  client.println("$.ajaxSetup({timeout:1000}); function servo(pos, servo) { ");
-  client.println("$.get(\"/?value=\" + pos + \"&\" + \"servo=\" + servo + \"&\"); {Connection: close};}</script>");
+  if (servo == "servoBase") {
+      posServo = posServoBase;
+
+      SERVO_BASE = true;
+  }
+  else if (servo == "servoArm1") { 
+      posServo = posServoArm1;
+      SERVO_ARM1 = true;
+  }
+  else if (servo == "servoArm2") {
+      posServo = posServoArm2; 
+      SERVO_ARM2 = true;     
+  }
+  else if (servo == "servoHead") {
+      posServo = posServoHead;
+      SERVO_HEAD = true;
+  }
+}
+
+void moveServo(Servo &servo, int basePos, int newPos) {
+
+  if (basePos <= newPos) {
+    //servoBase.write(20);
+    for(int i = basePos; i <= newPos; i += 1) {
+      servo.write(i);
+      delay(15);
+    } 
+  }
+  else{
+    for(int i = basePos; i >= newPos; i -= 1) {
+      servo.write(i);  
+      delay(15);
+    }
+  }
+}
+
+void writeNewPos(String servo, int value) {
+  if (servo == "servoBase") {
+      posServoBase = value;
+  }
+  else if (servo == "servoArm1") { 
+      posServoArm1 = value;
+  }
+  else if (servo == "servoArm2") {
+      posServoArm2 = value; 
+  }
+  else if (servo == "servoHead") {
+      posServoHead = value;
+  }
+}
+
+void setup() {
+  // Serial port for debugging purposes
+  Serial.begin(115200);
+
+  initSPIFFS();
+  initServo();
+  initAimant();
+  // Set GPIO 2 as an OUTPUT
   
-  client.println("</body></html>"); 
+  // Load values saved in SPIFFS
+  ssid = readFile(SPIFFS, ssidPath);
+  pass = readFile(SPIFFS, passPath);
+  ip = readFile(SPIFFS, ipPath);
+  gateway = readFile (SPIFFS, gatewayPath);
+  Serial.println(ssid);
+  Serial.println(ip);
+  Serial.println(gateway);
+
+  if(initWiFi()) {
+    // Route for root / web page
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->send(SPIFFS, "/index.html", "text/html", false, processor);
+    });
+    server.serveStatic("/", SPIFFS, "/");
+    
+    // Route to save all servo load positions  
+    server.on("/saveLoadPositions", HTTP_GET, [](AsyncWebServerRequest *request) {
+      
+      request->send(SPIFFS, "/index.html", "text/html", false, processor);
+      SAVE_LOAD_POSITIONS = true;
+    });
+
+    // Route to save all servo sleep positions
+    server.on("/saveSleepPositions", HTTP_GET, [](AsyncWebServerRequest *request) {
+      
+      request->send(SPIFFS, "/index.html", "text/html", false, processor);
+      SAVE_SLEEP_POSITIONS = true;
+    });
+
+    // Route to load all servo load positions
+    server.on("/loadLoadPositions", HTTP_GET, [](AsyncWebServerRequest *request) {
+      
+      request->send(SPIFFS, "/index.html", "text/html", false, processor);
+      LOAD_LOAD_POSITIONS = true;
+    });
+
+    // Route to load all servo sleep positions
+    server.on("/loadSleepPositions", HTTP_GET, [](AsyncWebServerRequest *request) {
+      
+      request->send(SPIFFS, "/index.html", "text/html", false, processor);
+      LOAD_SLEEP_POSITIONS = true;
+    });
+
+    server.on("/reload", HTTP_GET, [](AsyncWebServerRequest *request) {
+      
+      request->send(SPIFFS, "/index.html", "text/html", false, processor);
+      RELOAD_CAPS = true;
+    });
+
+    // Route to handle a moving servo
+    server.on("/move", HTTP_GET, [](AsyncWebServerRequest *request) {
+      
+      
+
+      if (request->hasParam(PARAM_INPUT_1) && request->hasParam(PARAM_INPUT_2)) {
+        inputValue = request->getParam(PARAM_INPUT_1)->value();
+        inputServo = request->getParam(PARAM_INPUT_2)->value();
+
+        MOVE_SERVO = true;
+        engageServo(inputServo);
+      }
+    });
+    server.begin();
+  }
+  else {
+    // Connect to Wi-Fi network with SSID and password
+    Serial.println("Setting AP (Access Point)");
+    // NULL sets an open Access Point
+    WiFi.softAP("ESP-WIFI-MANAGER", NULL);
+
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(IP); 
+
+    // Web Server Root URL
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+      request->send(SPIFFS, "/wifimanager.html", "text/html");
+    });
+    
+    server.serveStatic("/", SPIFFS, "/");
+    
+    server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
+      int params = request->params();
+      for(int i=0;i<params;i++){
+        AsyncWebParameter* p = request->getParam(i);
+        if(p->isPost()){
+          // HTTP POST ssid value
+          if (p->name() == PARAM_WIFI_INPUT_1) {
+            ssid = p->value().c_str();
+            Serial.print("SSID set to: ");
+            Serial.println(ssid);
+            // Write file to save value
+            writeFile(SPIFFS, ssidPath, ssid.c_str());
+          }
+          // HTTP POST pass value
+          if (p->name() == PARAM_WIFI_INPUT_2) {
+            pass = p->value().c_str();
+            Serial.print("Password set to: ");
+            Serial.println(pass);
+            // Write file to save value
+            writeFile(SPIFFS, passPath, pass.c_str());
+          }
+          // HTTP POST ip value
+          if (p->name() == PARAM_WIFI_INPUT_3) {
+            ip = p->value().c_str();
+            Serial.print("IP Address set to: ");
+            Serial.println(ip);
+            // Write file to save value
+            writeFile(SPIFFS, ipPath, ip.c_str());
+          }
+          // HTTP POST gateway value
+          if (p->name() == PARAM_WIFI_INPUT_4) {
+            gateway = p->value().c_str();
+            Serial.print("Gateway set to: ");
+            Serial.println(gateway);
+            // Write file to save value
+            writeFile(SPIFFS, gatewayPath, gateway.c_str());
+          }
+          //Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
+        }
+      }
+      request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
+      delay(3000);
+      ESP.restart();
+    });
+    server.begin();
+  }
 }
+
+//Je suppose que ça fonctionne pas car il y a la boucle qui reset à chaque fois --> pas ça
+
+
+
+void loop() {
+  if (MOVE_SERVO) {
+    Serial.println("Moving servo");
+    if (SERVO_BASE) {
+      Serial.println("Servo base is moving");
+      moveServo(servoBase, posServo, inputValue.toInt());
+      writeNewPos("servoBase", inputValue.toInt());
+      SERVO_BASE = false;
+    }
+    else if (SERVO_ARM1) {
+      Serial.println("Servo arm 1 is moving");
+      moveServo(servoArm1, posServo, inputValue.toInt());
+      writeNewPos("servoArm1", inputValue.toInt());
+      SERVO_ARM1 = false;
+    }
+    else if (SERVO_ARM2) {
+      Serial.println("Servo arm 2 is moving");
+      moveServo(servoArm2, posServo, inputValue.toInt());
+      writeNewPos("servoArm2", inputValue.toInt());
+      SERVO_ARM2 = false;
+    }
+    else if (SERVO_HEAD) {
+      Serial.println("Servo head is moving");
+      moveServo(servoHead, posServo, inputValue.toInt());
+      writeNewPos("servoHead", inputValue.toInt());
+      SERVO_HEAD = false;
+    }
+    MOVE_SERVO = false;
+  }
+
+  if (SAVE_LOAD_POSITIONS) {
+    Serial.println("Loading load positions");
+    saveServoLoadPositions();
+    SAVE_LOAD_POSITIONS = false;
+  }
+  if (SAVE_SLEEP_POSITIONS) {
+    Serial.println("Saving sleep positions");
+    saveServoSleepPositions();
+    SAVE_SLEEP_POSITIONS = false;
+  }
+  if (LOAD_LOAD_POSITIONS) {
+    Serial.println("Loading load positions");
+    loadServoLoadPositions();
+    LOAD_LOAD_POSITIONS = false;
+  }
+  if (LOAD_SLEEP_POSITIONS) {
+    Serial.println("Loading sleep positions");
+    loadServoSleepPositions();
+    LOAD_SLEEP_POSITIONS = false;
+  }
+  if (RELOAD_CAPS) {
+    Serial.println("Reloading Caps");
+    reloadCaps();
+    RELOAD_CAPS = false;
+  }
+}
+           

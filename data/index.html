@@ -1,46 +1,97 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" href="data:,">
-  <style>
-    body {
-      text-align: center;
-      font-family: "Trebuchet MS", Arial;
-      margin-left:auto;
-      margin-right:auto;
-    }
-    .slider {
-      width: 300px;
-    }
-  </style>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-</head>
-<body>
-  <h1>ESP32 with Servo</h1>
-  <p>Position servo1: <span id="servoPos"></span></p>
-  <input type="range" min="0" max="270" class="slider" id="servoSlider" onchange="servo(this.value,servo1)"/>
-  <p>Position servo2: <span id="servoPos2"></span></p>
-  <input type="range" min="0" max="270" class="slider" id="servoSlider2" onchange="servo(this.value,servo2)"/>
-  <p>Enregistrer la position : <span id="save"></span></p><a href="/save"><button>Save</button></a>
-  <p>Charger la position : <span id="load"></span></p><a href="/load"><button>LOAD</button></a>
-  <script>
-    var slider = document.getElementById("servoSlider");
-    var servoP = document.getElementById("servoPos");
-	var slider2 = document.getElementById("servoSlider2");
-    var servoP2 = document.getElementById("servoPos2");
-    servoP.innerHTML = slider.value;
-	servoP2.innerHTML = slider2.value;
-    slider.oninput = function() {
-      slider.value = this.value;
-      servoP.innerHTML = this.value;
-    }
-	slider2.oninput = function() { slider2.value = this.value; servoP2.innerHTML = this.value; }
-    $.ajaxSetup({timeout:1000});
-    function servo(pos,servo) {
-      $.get("/?value=" + pos + "&" + "servo=" + servo + "&");
-      {Connection: close};
-    }
-  </script>
-</body>
+   <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+      <link rel="icon" href="data:,">
+      <style>body { text-align: center; font-family: "Trebuchet MS", Arial; margin-left:auto; margin-right:auto;}
+         .tab {overflow: hidden;border: 1px solid #ccc;background-color: #f1f1f1;}
+         .tab button {background-color: inherit;float: left;width: 50%;border: none;outline: none;cursor: pointer;padding: 14px 16px;transition: 0.3s;}
+         .tab button:hover {background-color: #ddd;}
+         .tab button.active {background-color: #ccc;}
+         .tabcontent {display: none; padding: 6px 12px;}
+         .slider { width: 300px; }
+      </style>
+      <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+   </head>
+   <body>
+      <h1>CAPS TRAINER</h1>
+      <div class="tab"><button class="tablinks" onclick="openTab(event, 'Setup')" id="defaultOpen">Setup</button><button class="tablinks" onclick="openTab(event, 'Use')">Use</button></div>
+      <div id="Setup" class="tabcontent">
+         <p>Position base : <span id="basePos"></span></p>
+         <input type="range" min="0" max="180" class="slider" id="baseSlider" onchange="servo(this.value,'servoBase')" value=""/>
+         <p>Position bras 1 : <span id="arm1Pos"></span></p>
+         <input type="range" min="0" max="180" class="slider" id="arm1Slider" onchange="servo(this.value,'servoArm1')" value=""/>
+         <p>Position bras 2 : <span id="arm2Pos"></span></p>
+         <input type="range" min="0" max="180" class="slider" id="arm2Slider" onchange="servo(this.value,'servoArm2')" value=""/>
+         <p>Position tête : <span id="headPos"></span></p>
+         <input type="range" min="0" max="180" class="slider" id="headSlider" onchange="servo(this.value,'servoHead')" value=""/>
+         <p>Enregistrer la position de recharge: <span id="save"></span></p>
+         <a href="/save/load"><button>Save</button></a>
+         <p>Charger la position de recharge: <span id="load"></span></p>
+         <a href="/load/load"><button>Load</button></a>
+         <p>Enregistrer la position de repos: <span id="save"></span></p>
+         <a href="/save/sleep"><button>Save</button></a>
+         <p>Charger la position de repos: <span id="load"></span></p>
+         <a href="/load/sleep"><button>Load</button></a>
+      </div>
+      <div id="Use" class="tabcontent">
+         <p>Recharger les CAPS : <span id="recharge"></span></p>
+         <a href="/reload"><button>Recharger</button></a>
+      </div>
+      <script>
+        var sliderBase = document.getElementById("baseSlider"); 
+		var servoBasePos = document.getElementById("basePos"); 
+		servoBasePos.innerHTML = sliderBase.value;
+        sliderBase.oninput = function() { 
+		 sliderBase.value = this.value; 
+		 servoBasePos.innerHTML = this.value; 
+		}
+		
+        var sliderArm1 = document.getElementById("arm1Slider"); 
+		var servoArm1Pos = document.getElementById("arm1Pos"); 
+		servoArm1Pos.innerHTML = sliderArm1.value;
+        sliderArm1.oninput = function() { 
+		 sliderArm1.value = this.value; 
+		 servoArm1Pos.innerHTML = this.value; 
+		}
+		
+        var sliderArm2 = document.getElementById("arm2Slider"); 
+		var servoArm2Pos = document.getElementById("arm2Pos"); 
+		servoArm2Pos.innerHTML = sliderArm2.value;
+        sliderArm2.oninput = function() { 
+		 sliderArm2.value = this.value; 
+		 servoArm2Pos.innerHTML = this.value; 
+		}
+		
+        var sliderHead = document.getElementById("headSlider"); 
+		var servoHeadPos = document.getElementById("headPos"); 
+		servoHeadPos.innerHTML = sliderHead.value;
+        sliderHead.oninput = function() { 
+		 sliderHead.value = this.value; 
+		 servoHeadPos.innerHTML = this.value; 
+		}
+		
+        function openTab(evt, cityName) {
+			var i, tabcontent, tablinks;
+			tabcontent = document.getElementsByClassName("tabcontent");
+			for (i = 0; i < tabcontent.length; i++) {
+				tabcontent[i].style.display = "none";
+			}
+			tablinks = document.getElementsByClassName("tablinks");
+			for (i = 0; i < tablinks.length; i++) {
+				tablinks[i].className = tablinks[i].className.replace(" active", "");
+			}
+			document.getElementById(cityName).style.display = "block";
+			evt.currentTarget.className += " active";
+		}
+		
+        document.getElementById("defaultOpen").click();
+        $.ajaxSetup({timeout:1000}); function servo(pos, servo) {
+			$.get("/move?value=" + pos + "&" + "servo=" + servo + "&"); {
+				Connection: close
+			};
+		}
+      </script>
+   </body>
 </html>
+");
