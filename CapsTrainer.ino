@@ -189,46 +189,47 @@ void initAimant() {
 }
 
 void saveServoLoadPositions() {   
-  preferences.putUInt("servoBaseLoad", posServoBase);
-  preferences.putUInt("servoArm1Load", posServoArm1);
-  preferences.putUInt("servoArm2Load", posServoArm2);
-  preferences.putUInt("servoHeadLoad", posServoHead);
+  preferences.putInt("servoBaseLoad", posServoBase);
+  preferences.putInt("servoArm1Load", posServoArm1);
+  preferences.putInt("servoArm2Load", posServoArm2);
+  preferences.putInt("servoHeadLoad", posServoHead);
 }
 
 void loadServoLoadPositions() {
  
-  posServoBase = preferences.getUInt("servoBaseLoad", 0);
+  posServoBase = preferences.getInt("servoBaseLoad", 0);
   moveServo(servoBase, posServoBase, preferences.getUInt("servoBaseLoad", 0));
  
-  posServoArm1 = preferences.getUInt("servoArm1Load", 0);
+  posServoArm1 = preferences.getInt("servoArm1Load", 0);
   moveServo(servoArm1, posServoArm1, preferences.getUInt("servoArm1Load", 0)); 
  
-  posServoArm2 = preferences.getUInt("servoArm2Load", 0);
+  posServoArm2 = preferences.getInt("servoArm2Load", 0);
   moveServo(servoArm2, posServoArm2, preferences.getUInt("servoArm2Load", 0));
  
-  posServoHead = preferences.getUInt("servoHeadLoad", 0);
+  posServoHead = preferences.getInt("servoHeadLoad", 0);
   moveServo(servoHead, posServoHead, preferences.getUInt("servoHeadLoad", 0));
 }
 
 void saveServoSleepPositions() {   
-  preferences.putUInt("servoBaseSleep", posServoBase);
-  preferences.putUInt("servoArm1Sleep", posServoArm1);
-  preferences.putUInt("servoArm2Sleep", posServoArm2);
-  preferences.putUInt("servoHeadSleep", posServoHead);
+  preferences.putInt("servoBaseSleep", posServoBase);
+  preferences.putInt("servoArm1Sleep", posServoArm1);
+  preferences.putInt("servoArm2Sleep", posServoArm2);
+  preferences.putInt("servoHeadSleep", posServoHead);
 }
 
 void loadServoSleepPositions() {
-  // moveServo(servoBase, posServoBase, preferences.getUInt("servoBaseSleep", 0));
-  posServoBase = preferences.getUInt("servoBaseLoad", 0);
-
-  // moveServo(servoArm1, posServoArm1, preferences.getUInt("servoArm1Sleep", 0));
-  posServoArm1 = preferences.getUInt("servoArm1Sleep", 0); 
-     
-  // moveServo(servoArm2, posServoArm2, preferences.getUInt("servoArm2Sleep", 0));
-  posServoArm2 = preferences.getUInt("servoArm2Load", 0);
-     
-  // moveServo(servoHead, posServoHead, preferences.getUInt("servoHeadSleep", 0));
-  posServoHead = preferences.getUInt("servoHeadLoad", 0);
+ 
+  posServoBase = preferences.getInt("servoBaseLoad", 0);
+  moveServo(servoBase, posServoBase, preferences.getUInt("servoBaseSleep", 0));
+ 
+  posServoArm1 = preferences.getInt("servoArm1Sleep", 0); 
+  moveServo(servoArm1, posServoArm1, preferences.getUInt("servoArm1Sleep", 0));  
+ 
+  posServoArm2 = preferences.getInt("servoArm2Load", 0);
+  moveServo(servoArm2, posServoArm2, preferences.getUInt("servoArm2Sleep", 0));   
+ 
+  posServoHead = preferences.getInt("servoHeadLoad", 0);
+  moveServo(servoHead, posServoHead, preferences.getUInt("servoHeadSleep", 0));
 }
 
 void reloadCaps() {
