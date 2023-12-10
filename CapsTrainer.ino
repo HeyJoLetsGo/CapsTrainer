@@ -191,23 +191,24 @@ void initAimant() {
 void saveServoLoadPositions() {   
   preferences.putInt("servoBaseLoad", posServoBase);
   preferences.putInt("servoArm1Load", posServoArm1);
+  Serial.println("Saving servo 2 value : " + String(posServoArm2));
   preferences.putInt("servoArm2Load", posServoArm2);
   preferences.putInt("servoHeadLoad", posServoHead);
 }
 
 void loadServoLoadPositions() {
- 
+  
+  moveServo(servoBase, posServoBase, preferences.getInt("servoBaseLoad", 0));
   posServoBase = preferences.getInt("servoBaseLoad", 0);
-  moveServo(servoBase, posServoBase, preferences.getUInt("servoBaseLoad", 0));
- 
-  posServoArm1 = preferences.getInt("servoArm1Load", 0);
-  moveServo(servoArm1, posServoArm1, preferences.getUInt("servoArm1Load", 0)); 
- 
-  posServoArm2 = preferences.getInt("servoArm2Load", 0);
-  moveServo(servoArm2, posServoArm2, preferences.getUInt("servoArm2Load", 0));
- 
-  posServoHead = preferences.getInt("servoHeadLoad", 0);
-  moveServo(servoHead, posServoHead, preferences.getUInt("servoHeadLoad", 0));
+
+  moveServo(servoArm1, posServoArm1, preferences.getInt("servoArm1Load", 0)); 
+  posServoBase = preferences.getInt("servoArm1Load", 0);
+
+  moveServo(servoArm2, posServoArm2, preferences.getInt("servoArm2Load", 0));
+  posServoBase = preferences.getInt("servoArm2Load", 0);
+
+  moveServo(servoHead, posServoHead, preferences.getInt("servoHeadLoad", 0));
+  posServoBase = preferences.getInt("servoHeadLoad", 0);
 }
 
 void saveServoSleepPositions() {   
@@ -219,47 +220,33 @@ void saveServoSleepPositions() {
 
 void loadServoSleepPositions() {
  
-  posServoBase = preferences.getInt("servoBaseLoad", 0);
-  moveServo(servoBase, posServoBase, preferences.getUInt("servoBaseSleep", 0));
+  moveServo(servoBase, posServoBase, preferences.getInt("servoBaseSleep", 0));
+  posServoBase = preferences.getInt("servoBaseSleep", 0);
+
+  moveServo(servoArm1, posServoArm1, preferences.getInt("servoArm1Sleep", 0));  
+  posServoArm1 = preferences.getInt("servoArm1Sleep", 0);
  
-  posServoArm1 = preferences.getInt("servoArm1Sleep", 0); 
-  moveServo(servoArm1, posServoArm1, preferences.getUInt("servoArm1Sleep", 0));  
+  moveServo(servoArm2, posServoArm2, preferences.getInt("servoArm2Sleep", 0));   
+  posServoArm2 = preferences.getInt("servoArm2Sleep", 0);
  
-  posServoArm2 = preferences.getInt("servoArm2Load", 0);
-  moveServo(servoArm2, posServoArm2, preferences.getUInt("servoArm2Sleep", 0));   
- 
-  posServoHead = preferences.getInt("servoHeadLoad", 0);
-  moveServo(servoHead, posServoHead, preferences.getUInt("servoHeadSleep", 0));
+  moveServo(servoHead, posServoHead, preferences.getInt("servoHeadSleep", 0));
+  posServoHead = preferences.getInt("servoHeadSleep", 0); 
 }
 
 void reloadCaps() {
-  goToBottlePosition();
+  loadServoLoadPosition();
   delay(2000);
   elecAimOff();
   delay(1000);
-  goToSleepPosition();
+  LoadServoSleepPosition();
   delay(500);
   elecAimOn();  
-}
-
-void goToBottlePosition() {
-  servoBase.write(preferences.getUInt("servoBaseLoad", 0));
-  servoArm1.write(preferences.getUInt("servoArm1Load", 0));  
-  servoArm2.write(preferences.getUInt("servoArm2Load", 0));
-  servoHead.write(preferences.getUInt("servoHeadLoad", 0));
 }
 
 void elecAimOff() {
   digitalWrite(elecAimDev, LOW);
   digitalWrite(elecAimAD, LOW);
   digitalWrite(elecAimAG, LOW);
-}
-
-void goToSleepPosition() {
-  servoHead.write(preferences.getUInt("servoHeadSleep", 0));
-  servoArm2.write(preferences.getUInt("servoArm2Sleep", 0));
-  servoArm1.write(preferences.getUInt("servoArm1Sleep", 0));
-  servoBase.write(preferences.getUInt("servoBaseSleep", 0));
 }
 
 void elecAimOn() {
@@ -272,7 +259,6 @@ void engageServo(String servo) {
 
   if (servo == "servoBase") {
       posServo = posServoBase;
-
       SERVO_BASE = true;
   }
   else if (servo == "servoArm1") { 
@@ -292,7 +278,6 @@ void engageServo(String servo) {
 void moveServo(Servo &servo, int basePos, int newPos) {
 
   if (basePos <= newPos) {
-    //servoBase.write(20);
     for(int i = basePos; i <= newPos; i += 1) {
       servo.write(i);
       delay(15);
@@ -315,6 +300,7 @@ void writeNewPos(String servo, int value) {
   }
   else if (servo == "servoArm2") {
       posServoArm2 = value; 
+      Serial.println("Servo 2 new value = " + String(value));
   }
   else if (servo == "servoHead") {
       posServoHead = value;
@@ -325,6 +311,7 @@ void setup() {
   // Serial port for debugging purposes
   Serial.begin(115200);
 
+  preferences.begin("capsTrainer", false);
   initSPIFFS();
   initServo();
   initAimant();
@@ -495,7 +482,7 @@ void loop() {
   }
 
   if (SAVE_LOAD_POSITIONS) {
-    Serial.println("Loading load positions");
+    Serial.println("Saving load positions");
     saveServoLoadPositions();
     SAVE_LOAD_POSITIONS = false;
   }
