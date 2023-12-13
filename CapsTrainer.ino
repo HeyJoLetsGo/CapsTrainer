@@ -204,11 +204,11 @@ void loadServoLoadPositions() {
   moveServo(servoArm1, posServoArm1, preferences.getInt("servoArm1Load", 0)); 
   posServoBase = preferences.getInt("servoArm1Load", 0);
 
-  moveServo(servoArm2, posServoArm2, preferences.getInt("servoArm2Load", 0));
-  posServoBase = preferences.getInt("servoArm2Load", 0);
-
   moveServo(servoHead, posServoHead, preferences.getInt("servoHeadLoad", 0));
   posServoBase = preferences.getInt("servoHeadLoad", 0);
+
+  moveServo(servoArm2, posServoArm2, preferences.getInt("servoArm2Load", 0));
+  posServoBase = preferences.getInt("servoArm2Load", 0);
 }
 
 void saveServoSleepPositions() {   
@@ -220,25 +220,25 @@ void saveServoSleepPositions() {
 
 void loadServoSleepPositions() {
  
+  moveServo(servoArm2, posServoArm2, preferences.getInt("servoArm2Sleep", 0));   
+  posServoArm2 = preferences.getInt("servoArm2Sleep", 0);
+
   moveServo(servoBase, posServoBase, preferences.getInt("servoBaseSleep", 0));
   posServoBase = preferences.getInt("servoBaseSleep", 0);
 
   moveServo(servoArm1, posServoArm1, preferences.getInt("servoArm1Sleep", 0));  
   posServoArm1 = preferences.getInt("servoArm1Sleep", 0);
  
-  moveServo(servoArm2, posServoArm2, preferences.getInt("servoArm2Sleep", 0));   
-  posServoArm2 = preferences.getInt("servoArm2Sleep", 0);
- 
   moveServo(servoHead, posServoHead, preferences.getInt("servoHeadSleep", 0));
   posServoHead = preferences.getInt("servoHeadSleep", 0); 
 }
 
 void reloadCaps() {
-  loadServoLoadPosition();
+  loadServoLoadPositions();
   delay(2000);
   elecAimOff();
   delay(1000);
-  LoadServoSleepPosition();
+  loadServoSleepPositions();
   delay(500);
   elecAimOn();  
 }
