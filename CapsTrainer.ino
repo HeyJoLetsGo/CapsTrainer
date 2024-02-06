@@ -46,8 +46,11 @@ IPAddress localGateway;
 IPAddress subnet(255, 255, 0, 0);
 
 // Parameters for servo movement
-const char* PARAM_INPUT_1 = "value";
-const char* PARAM_INPUT_2 = "servo";
+const char* PARAM_VALUE = "value";
+const char* PARAM_SERVO = "servo";
+
+// Parameter for number of used electromagnet
+const char* PARAM_NB_EM = "nbEM"; 
 
 // Timer variables
 unsigned long previousMillis = 0;
@@ -62,6 +65,8 @@ int posServoHead = 90;
 int elecAimDev = 25;
 int elecAimAD = 26;
 int elecAimAG = 27;
+
+int nbEM = 3; // 3 par défaut, vu que c'est le jeu 'normal'
 
 String inputValue;
 String inputServo;
@@ -154,7 +159,7 @@ bool initWiFi() {
   return true;
 }
 
-// Replaces placeholder with LED state value
+// Replaces placeholder with servo values
 String processor(const String& var) {
   if(var == "POSITION_SERVO_BASE") {
     return String(posServoBase);
@@ -202,13 +207,13 @@ void loadServoLoadPositions() {
   posServoBase = preferences.getInt("servoBaseLoad", 0);
 
   moveServo(servoArm1, posServoArm1, preferences.getInt("servoArm1Load", 0)); 
-  posServoBase = preferences.getInt("servoArm1Load", 0);
-
-  moveServo(servoHead, posServoHead, preferences.getInt("servoHeadLoad", 0));
-  posServoBase = preferences.getInt("servoHeadLoad", 0);
+  posServoArm1 = preferences.getInt("servoArm1Load", 0);
 
   moveServo(servoArm2, posServoArm2, preferences.getInt("servoArm2Load", 0));
-  posServoBase = preferences.getInt("servoArm2Load", 0);
+  posServoArm2 = preferences.getInt("servoArm2Load", 0);
+
+  moveServo(servoHead, posServoHead, preferences.getInt("servoHeadLoad", 0));
+  posServoHead = preferences.getInt("servoHeadLoad", 0);
 }
 
 void saveServoSleepPositions() {   
@@ -244,15 +249,36 @@ void reloadCaps() {
 }
 
 void elecAimOff() {
-  digitalWrite(elecAimDev, LOW);
-  digitalWrite(elecAimAD, LOW);
-  digitalWrite(elecAimAG, LOW);
+  if (nbEM == 1) {
+    Serial.println("Only one EM going off");
+    digitalWrite(elecAimDev, LOW);
+  }
+  if (nbEM == 2) {
+    Serial.println("Two EM going off");
+    digitalWrite(elecAimAD, LOW);
+    digitalWrite(elecAimAG, LOW);
+  }
+  if (nbEM == 3) {
+    Serial.println("Three EM going off");
+    digitalWrite(elecAimDev, LOW);
+    digitalWrite(elecAimAD, LOW);
+    digitalWrite(elecAimAG, LOW);
+  } 
 }
 
 void elecAimOn() {
-  digitalWrite(elecAimDev, HIGH);
-  digitalWrite(elecAimAD, HIGH);
-  digitalWrite(elecAimAG, HIGH);
+  if (nbEM == 1) {
+    digitalWrite(elecAimDev, HIGH);
+  }
+  if (nbEM == 2) {
+    digitalWrite(elecAimAD, HIGH);
+    digitalWrite(elecAimAG, HIGH);
+  }
+  if (nbEM == 3) {
+    digitalWrite(elecAimDev, HIGH);
+    digitalWrite(elecAimAD, HIGH);
+    digitalWrite(elecAimAG, HIGH);
+  } 
 }
 
 void engageServo(String servo) {
@@ -300,7 +326,6 @@ void writeNewPos(String servo, int value) {
   }
   else if (servo == "servoArm2") {
       posServoArm2 = value; 
-      Serial.println("Servo 2 new value = " + String(value));
   }
   else if (servo == "servoHead") {
       posServoHead = value;
@@ -369,15 +394,19 @@ void setup() {
 
     // Route to handle a moving servo
     server.on("/move", HTTP_GET, [](AsyncWebServerRequest *request) {
-      
-      
 
-      if (request->hasParam(PARAM_INPUT_1) && request->hasParam(PARAM_INPUT_2)) {
-        inputValue = request->getParam(PARAM_INPUT_1)->value();
-        inputServo = request->getParam(PARAM_INPUT_2)->value();
+      if (request->hasParam(PARAM_VALUE) && request->hasParam(PARAM_SERVO)) {
+        inputValue = request->getParam(PARAM_VALUE)->value();
+        inputServo = request->getParam(PARAM_SERVO)->value();
 
         MOVE_SERVO = true;
         engageServo(inputServo);
+      }
+    });
+
+    server.on("/nbCaps", HTTP_GET, [](AsyncWebServerRequest *request) {
+      if (request->hasParam(PARAM_NB_EM)) {
+        nbEM = request->getParam(PARAM_NB_EM)->value();
       }
     });
     server.begin();
