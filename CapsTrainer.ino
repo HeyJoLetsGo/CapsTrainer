@@ -406,7 +406,7 @@ void setup() {
 
     server.on("/nbCaps", HTTP_GET, [](AsyncWebServerRequest *request) {
       if (request->hasParam(PARAM_NB_EM)) {
-        nbEM = request->getParam(PARAM_NB_EM)->value();
+        nbEM = request->getParam(PARAM_NB_EM)->value().toInt();
       }
     });
     server.begin();
